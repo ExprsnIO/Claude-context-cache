@@ -1,9 +1,12 @@
 """Cache the read content of `state.context_sources` between calls.
 
 Mirrors the Node `npm/src/source-cache.ts` module: cache key is a
-fingerprint of each source's mtime + size (or hash of recursive
-fingerprints for directories), so any on-disk change invalidates
-automatically.
+SHA-256 content hash of the file (or of the sorted relative-path +
+content-hash pairs for a directory). Hashing the bytes — not mtime
+or size — means edits that produce identical content do not invalidate
+the cache, and edits that change content invalidate even when the
+filesystem mtime is unchanged (touch, restored backups, editors that
+preserve mtime, sub-second mtime granularity).
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from ccc.store.config import StoreConfig
 from ccc.store.session import Session
 
 SOURCE_NAMESPACE = "ccc-py-sources"
+_HASH_CHUNK = 64 * 1024
 
 _lock = threading.Lock()
 _session: Session | None = None
@@ -44,10 +48,17 @@ def close_source_session() -> None:
         session.close()
 
 
+def _hash_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(_HASH_CHUNK), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def _fingerprint(path: Path) -> str:
     if not path.is_dir():
-        st = path.stat()
-        return f"f:{st.st_mtime_ns}:{st.st_size}"
+        return f"f:{_hash_file(path)}"
     parts: list[str] = []
     for child in sorted(path.rglob("*")):
         if any(p.startswith(".") for p in child.relative_to(path).parts):
@@ -55,12 +66,12 @@ def _fingerprint(path: Path) -> str:
         if not child.is_file():
             continue
         try:
-            st = child.stat()
+            digest = _hash_file(child)
         except OSError:
             continue
         rel = child.relative_to(path)
-        parts.append(f"{rel}:{st.st_mtime_ns}:{st.st_size}")
-    digest = hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()
+        parts.append(f"{rel}:{digest}")
+    digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
     return f"d:{digest}"
 
 

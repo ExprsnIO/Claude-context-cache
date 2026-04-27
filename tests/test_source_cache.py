@@ -38,7 +38,7 @@ def test_read_source_cached_miss_then_hit(tmp_path) -> None:
     assert second.text == "alpha"
 
 
-def test_read_source_cached_invalidates_on_mtime_change(tmp_path) -> None:
+def test_read_source_cached_invalidates_on_content_change(tmp_path) -> None:
     path = tmp_path / "a.txt"
     path.write_text("alpha", encoding="utf-8")
 
@@ -46,8 +46,6 @@ def test_read_source_cached_invalidates_on_mtime_change(tmp_path) -> None:
     assert first.cache_hit is False
 
     path.write_text("alpha-and-beta", encoding="utf-8")
-    future = time.time() + 5
-    os.utime(path, (future, future))
 
     second = read_source_cached(path)
     assert second.cache_hit is False
@@ -56,6 +54,41 @@ def test_read_source_cached_invalidates_on_mtime_change(tmp_path) -> None:
     third = read_source_cached(path)
     assert third.cache_hit is True
     assert third.text == "alpha-and-beta"
+
+
+def test_read_source_cached_ignores_mtime_only_change(tmp_path) -> None:
+    """Touching mtime without changing bytes should NOT invalidate the cache.
+
+    The previous mtime+size fingerprint would invalidate on `touch`; the
+    content-hash fingerprint must not.
+    """
+    path = tmp_path / "a.txt"
+    path.write_text("alpha", encoding="utf-8")
+
+    first = read_source_cached(path)
+    assert first.cache_hit is False
+
+    future = time.time() + 5
+    os.utime(path, (future, future))
+
+    second = read_source_cached(path)
+    assert second.cache_hit is True
+    assert second.text == "alpha"
+
+
+def test_read_source_cached_ignores_rewrite_with_same_bytes(tmp_path) -> None:
+    """Rewriting a file with identical bytes must keep the cache warm."""
+    path = tmp_path / "a.txt"
+    path.write_text("alpha", encoding="utf-8")
+
+    first = read_source_cached(path)
+    assert first.cache_hit is False
+
+    path.write_text("alpha", encoding="utf-8")  # same bytes, fresh mtime
+
+    second = read_source_cached(path)
+    assert second.cache_hit is True
+    assert second.text == "alpha"
 
 
 def test_gather_context_sources_cached_returns_label_text_pairs(tmp_path) -> None:

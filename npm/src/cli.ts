@@ -21,9 +21,29 @@ import {
   validate,
   writeHandoff,
 } from "./handoff.js";
-import { State, StateStore } from "./state.js";
+import { State, StateStore, type AnthropicUsage } from "./state.js";
 
 const PKG_VERSION = "0.1.0";
+
+/** One-line per-call cache telemetry written to stderr.
+ *
+ * Surfaces `cache_creation_input_tokens` and `cache_read_input_tokens` for
+ * the current call so cache effectiveness regressions are visible instead
+ * of buried in aggregate counters.
+ */
+function formatUsageLine(usage: AnthropicUsage): string {
+  const inp = usage.input_tokens ?? 0;
+  const out = usage.output_tokens ?? 0;
+  const cacheRead = usage.cache_read_input_tokens ?? 0;
+  const cacheCreation = usage.cache_creation_input_tokens ?? 0;
+  const cacheable = cacheRead + cacheCreation;
+  const hitPct = cacheable > 0 ? (cacheRead / cacheable) * 100 : 0;
+  return (
+    `[ccc] tokens — input=${inp} output=${out} ` +
+    `cache_read=${cacheRead} cache_creation=${cacheCreation} ` +
+    `hit=${hitPct.toFixed(0)}%`
+  );
+}
 
 function getStore(opts: { root?: string }): StateStore {
   return new StateStore(opts.root ?? ".");
@@ -255,9 +275,10 @@ program
         state.recordUsage(usage);
         store.save(state);
         process.stdout.write(reply + "\n");
+        process.stderr.write(formatUsageLine(usage) + "\n");
         if (shouldCompact(state, opts.threshold)) {
           process.stderr.write(
-            `\n[ccc] session tokens hit ${sessionTokenEstimate(state)} ` +
+            `[ccc] session tokens hit ${sessionTokenEstimate(state)} ` +
               `(threshold ${opts.threshold}); run \`ccc compact\` to emit a handoff.\n`,
           );
         }
