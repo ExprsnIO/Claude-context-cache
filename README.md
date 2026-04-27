@@ -62,6 +62,32 @@ The only volatile part is the user message, which sits after the cache breakpoin
   handoffs/           # generated handoff documents
 ```
 
+## Monorepo
+
+This repository is an **npm workspaces monorepo** alongside the Python package at the root:
+
+```
+.
+├── pyproject.toml          # Python ccc package (root)
+├── src/ccc/                # Python source
+├── tests/                  # Python tests
+├── package.json            # workspaces root
+├── npm/                    # claude-context-cache (Node CLI + library)
+└── context-store/          # @claude-context-cache/context-store (tiered store)
+```
+
+A single `npm install` at the root wires both Node packages together via npm workspaces. `context-store` is symlinked into `npm/`'s `node_modules/`, so changes propagate without republishing.
+
+```bash
+npm install                 # installs all workspaces, builds in topo order
+npm test                    # runs every workspace's tests
+npm run build               # rebuilds context-store, then npm
+npm run build:context-store # build a single workspace
+npm run test:npm            # test a single workspace
+```
+
+The build order is enforced by listing `context-store` first in the root `workspaces` array; `npm run build --workspaces --if-present` then iterates in that order.
+
 ## Commands
 
 | Command | Purpose |

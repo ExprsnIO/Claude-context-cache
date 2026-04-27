@@ -10,6 +10,7 @@ import {
   HANDOFF_SYSTEM_PROMPT,
   renderTopicContext,
 } from "./prompts.js";
+import { gatherContextSourcesCached } from "./source-cache.js";
 import type { State, AnthropicUsage } from "./state.js";
 
 export const DEFAULT_MODEL = "claude-opus-4-7";
@@ -100,7 +101,7 @@ export async function ask(
   options: AskOptions = {},
 ): Promise<AskResult> {
   const client = makeClient();
-  const topicText = renderTopicContext(gatherContextSources(state));
+  const topicText = renderTopicContext(await gatherContextSourcesCached(state));
   const system = buildSystemBlocks(ASK_SYSTEM_PROMPT, topicText);
 
   const messages: Anthropic.MessageParam[] = [];
@@ -136,7 +137,7 @@ export async function generateHandoff(
   options: { model?: string; maxTokens?: number } = {},
 ): Promise<AskResult> {
   const client = makeClient();
-  const topicText = renderTopicContext(gatherContextSources(state));
+  const topicText = renderTopicContext(await gatherContextSourcesCached(state));
   const system = buildSystemBlocks(HANDOFF_SYSTEM_PROMPT, topicText);
 
   const completedList =
