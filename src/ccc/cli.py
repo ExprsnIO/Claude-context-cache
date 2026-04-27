@@ -175,7 +175,13 @@ def cmd_ask(args: argparse.Namespace) -> int:
     if not prompt.strip():
         print("error: empty prompt", file=sys.stderr)
         return 1
-    text, usage = ask(state, prompt, model=args.model, max_tokens=args.max_tokens)
+    text, usage = ask(
+        state,
+        prompt,
+        model=args.model,
+        max_tokens=args.max_tokens,
+        project_root=args.root,
+    )
     state.record_usage(usage)
     store.save(state)
     print(text)
@@ -193,7 +199,7 @@ def cmd_handoff(args: argparse.Namespace) -> int:
     from ccc.client import generate_handoff
 
     store, state = _load(args)
-    text, usage = generate_handoff(state, model=args.model)
+    text, usage = generate_handoff(state, model=args.model, project_root=args.root)
     state.record_usage(usage)
     text = truncate_to_limit(text)
     problems = validate(text)
@@ -214,7 +220,13 @@ def cmd_handoff(args: argparse.Namespace) -> int:
 
 def cmd_compact(args: argparse.Namespace) -> int:
     store, state = _load(args)
-    result = compact(store, state, threshold=args.threshold, force=args.force)
+    result = compact(
+        store,
+        state,
+        threshold=args.threshold,
+        force=args.force,
+        project_root=args.root,
+    )
     if result is None:
         used = session_token_estimate(state)
         print(
@@ -231,6 +243,28 @@ def cmd_tui(args: argparse.Namespace) -> int:
     from ccc import tui  # lazy: textual is an optional dependency
 
     return tui.run(root=args.root)
+
+
+def cmd_auth(args: argparse.Namespace) -> int:
+    from ccc.auth import detect_api_key, search_summary
+
+    hit = detect_api_key(project_root=args.root)
+    if args.verbose:
+        print("Searched (in order):")
+        for label, present in search_summary(project_root=args.root):
+            mark = "found" if present else "—"
+            print(f"  [{mark:>5}] {label}")
+        print()
+    if hit is None:
+        print(
+            "No API key found. Set $ANTHROPIC_API_KEY, drop a key into .env, "
+            "or store it in the OS keyring with `pip install keyring && "
+            "keyring set anthropic api_key`."
+        )
+        return 1
+    print(f"key:    {hit.redacted()}")
+    print(f"source: {hit.source}")
+    return 0
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
@@ -368,6 +402,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Launch the interactive Textual UI (requires `pip install -e \".[tui]\"`).",
     )
     p.set_defaults(func=cmd_tui)
+
+    p = sub.add_parser(
+        "auth",
+        help="Show the detected Anthropic API key source (key value is redacted).",
+    )
+    p.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="List every candidate the detector inspected.",
+    )
+    p.set_defaults(func=cmd_auth)
 
     return parser
 

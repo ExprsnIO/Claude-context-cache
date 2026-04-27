@@ -5,6 +5,7 @@ import { join, relative } from "node:path";
 
 import Anthropic from "@anthropic-ai/sdk";
 
+import { detectApiKey } from "./auth.js";
 import {
   ASK_SYSTEM_PROMPT,
   HANDOFF_SYSTEM_PROMPT,
@@ -62,14 +63,17 @@ export function gatherContextSources(state: State): Array<[string, string]> {
   return sources;
 }
 
-function makeClient(): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+function makeClient(projectRoot?: string): Anthropic {
+  const hit = detectApiKey({ projectRoot });
+  if (!hit) {
     throw new Error(
-      "ANTHROPIC_API_KEY is not set. Export it before running `ccc ask` or `ccc handoff`.",
+      "No Anthropic API key found. The detector searched env vars " +
+        "($ANTHROPIC_API_KEY, $CLAUDE_API_KEY), .env files, and " +
+        "platform-specific config paths. Run `ccc auth` for a " +
+        "candidate-by-candidate report.",
     );
   }
-  return new Anthropic({ apiKey });
+  return new Anthropic({ apiKey: hit.key });
 }
 
 export interface SystemBlock {
@@ -96,6 +100,7 @@ export function buildSystemBlocks(
 export interface AskOptions {
   model?: string;
   maxTokens?: number;
+  projectRoot?: string;
 }
 
 export interface AskResult {
@@ -108,7 +113,7 @@ export async function ask(
   userMessage: string,
   options: AskOptions = {},
 ): Promise<AskResult> {
-  const client = makeClient();
+  const client = makeClient(options.projectRoot);
   const topicText = renderTopicContext(await gatherContextSourcesCached(state));
   const system = buildSystemBlocks(ASK_SYSTEM_PROMPT, topicText);
 
@@ -142,9 +147,9 @@ export async function ask(
 
 export async function generateHandoff(
   state: State,
-  options: { model?: string; maxTokens?: number } = {},
+  options: { model?: string; maxTokens?: number; projectRoot?: string } = {},
 ): Promise<AskResult> {
-  const client = makeClient();
+  const client = makeClient(options.projectRoot);
   const topicText = renderTopicContext(await gatherContextSourcesCached(state));
   const system = buildSystemBlocks(HANDOFF_SYSTEM_PROMPT, topicText);
 

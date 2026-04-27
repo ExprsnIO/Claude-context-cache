@@ -44,10 +44,49 @@ Both actions are idempotent and skipped when `CCC_NO_AUTOENGAGE=1` or `CI` is se
 
 ## Environment
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | yes (for `ask`/`handoff`/`compact`) | Auth for the Anthropic API |
-| `CCC_NO_AUTOENGAGE` | no | Skip the npm `postinstall` auto-engage step |
+`ccc` does not require `ANTHROPIC_API_KEY` to be exported in the shell — the harness walks a layered detector and accepts the key from any of the locations below. Run `ccc auth -v` to see which candidates were inspected and which one won.
+
+### Key-detection cascade
+
+In order — first hit wins:
+
+1. **Env vars**: `ANTHROPIC_API_KEY`, then `CLAUDE_API_KEY` (alias for users who already keep one of those).
+2. **Project `.env` file** at `--root/.env` (defaults to cwd). Format: `KEY=VALUE`, with optional `export ` prefix and single/double-quoted values.
+3. **Home `.env`** at `~/.env`.
+4. **Platform-specific config file**:
+   - Windows: `%APPDATA%\anthropic\api_key`
+   - macOS: `~/Library/Application Support/anthropic/api_key`
+   - Linux/Unix: `$XDG_CONFIG_HOME/anthropic/api_key` (defaults to `~/.config/anthropic/api_key`)
+5. **Legacy `~/.anthropic/api_key`** — single-line plain file.
+6. **OS keyring** (Python only): service `anthropic`, username `api_key`. Uses Keychain on macOS, Credential Manager on Windows, Secret Service on Linux. Requires the optional dep:
+   ```bash
+   pip install -e ".[keyring]"
+   keyring set anthropic api_key   # prompts for the value
+   ```
+   The npm port does not read the OS keyring; users who keep their key there should export it into `ANTHROPIC_API_KEY` for the shell that runs `ccc`, or rely on the Python package.
+
+Each candidate is shape-checked (`sk-ant-` prefix, ≥ 32 chars) before being accepted, so an obvious typo or accidentally-saved placeholder won't be used. Detected values are NEVER written into `os.environ`, so the key does not leak to subprocesses.
+
+### Other variables
+
+| Variable | Purpose |
+|---|---|
+| `XDG_CONFIG_HOME` | Override Linux/Unix config root (default `~/.config`) |
+| `APPDATA` | Override Windows config root (set automatically by Windows) |
+| `CCC_NO_AUTOENGAGE` | Skip the npm `postinstall` auto-engage step |
+| `CI` | Treated like `CCC_NO_AUTOENGAGE=1` for npm `postinstall` |
+
+### `ccc auth`
+
+Prints the detected source without printing the key:
+
+```
+$ ccc auth
+key:    sk-ant-a…aaaa
+source: $ANTHROPIC_API_KEY
+```
+
+`ccc auth -v` lists every candidate the detector inspected, marked `[found]` or `[—]`. Useful when a hit-rate regression is actually an auth-source regression (different file picked up than the user expected).
 
 ## Workspace layout
 
@@ -355,7 +394,7 @@ store.save(state);
 
 ## Troubleshooting
 
-**`ANTHROPIC_API_KEY` not set.** `ccc ask`, `ccc handoff`, and `ccc compact` exit with an error. Export the key in your shell.
+**No Anthropic API key found.** `ccc ask`, `ccc handoff`, and `ccc compact` exit with an error after the detector walked every candidate. Run `ccc auth -v` to see exactly what was searched, then put the key in any one of: `$ANTHROPIC_API_KEY`, `.env` (project or `~/.env`), the platform config path, or — Python only — the OS keyring (`pip install -e ".[keyring]" && keyring set anthropic api_key`).
 
 **`No state at .ccc/state.json. Run \`ccc init\` first.`** Run `ccc init` with whatever context you have, then retry.
 

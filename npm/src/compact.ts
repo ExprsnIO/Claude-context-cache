@@ -30,12 +30,12 @@ export interface CompactResult {
 export async function compact(
   store: StateStore,
   state: State,
-  opts: { threshold?: number; force?: boolean } = {},
+  opts: { threshold?: number; force?: boolean; projectRoot?: string } = {},
 ): Promise<CompactResult | null> {
   const threshold = opts.threshold ?? DEFAULT_THRESHOLD_TOKENS;
   if (!opts.force && !shouldCompact(state, threshold)) return null;
 
-  const result = await generateHandoff(state);
+  const result = await generateHandoff(state, { projectRoot: opts.projectRoot });
   state.recordUsage(result.usage);
 
   const text = truncateToLimit(result.text);

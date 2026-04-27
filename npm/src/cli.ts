@@ -6,6 +6,7 @@ import { resolve, basename, join } from "node:path";
 
 import { Command } from "commander";
 
+import { detectApiKey, redact, searchSummary } from "./auth.js";
 import { ask, generateHandoff, DEFAULT_MODEL } from "./client.js";
 import {
   compact,
@@ -267,10 +268,12 @@ program
         process.stderr.write("error: empty prompt\n");
         process.exit(1);
       }
+      const root = (program.opts().root as string) ?? ".";
       try {
         const { text: reply, usage } = await ask(state, prompt, {
           model: opts.model,
           maxTokens: opts.maxTokens,
+          projectRoot: root,
         });
         state.recordUsage(usage);
         store.save(state);
@@ -296,9 +299,11 @@ program
   .option("--print", "Print the document to stdout")
   .action(async (opts: { model: string; print?: boolean }) => {
     const { store, state } = loadState(program.opts());
+    const root = (program.opts().root as string) ?? ".";
     try {
       const { text: raw, usage } = await generateHandoff(state, {
         model: opts.model,
+        projectRoot: root,
       });
       state.recordUsage(usage);
       const text = truncateToLimit(raw);
@@ -335,10 +340,12 @@ program
   .option("--force", "Compact even if the threshold has not been reached.")
   .action(async (opts: { threshold: number; force?: boolean }) => {
     const { store, state } = loadState(program.opts());
+    const root = (program.opts().root as string) ?? ".";
     try {
       const result = await compact(store, state, {
         threshold: opts.threshold,
         force: opts.force,
+        projectRoot: root,
       });
       if (!result) {
         const used = sessionTokenEstimate(state);
@@ -385,6 +392,34 @@ program
       `Resumed from ${handoff}. Loaded ${state.todos.length} todos. ` +
         `Phase=${state.current_phase || "-"}.\n`,
     );
+  });
+
+program
+  .command("auth")
+  .description(
+    "Show the detected Anthropic API key source (key value is redacted).",
+  )
+  .option("-v, --verbose", "List every candidate the detector inspected.")
+  .action((opts: { verbose?: boolean }) => {
+    const root = (program.opts().root as string) ?? ".";
+    const hit = detectApiKey({ projectRoot: root });
+    if (opts.verbose) {
+      process.stdout.write("Searched (in order):\n");
+      for (const [label, present] of searchSummary({ projectRoot: root })) {
+        const mark = present ? "found" : "—";
+        process.stdout.write(`  [${mark.padStart(5)}] ${label}\n`);
+      }
+      process.stdout.write("\n");
+    }
+    if (!hit) {
+      process.stdout.write(
+        "No API key found. Set $ANTHROPIC_API_KEY, drop a key into .env, " +
+          "or write it to a platform config file (run with -v for paths).\n",
+      );
+      process.exit(1);
+    }
+    process.stdout.write(`key:    ${redact(hit.key)}\n`);
+    process.stdout.write(`source: ${hit.source}\n`);
   });
 
 program.parseAsync(process.argv).catch((err: Error) => {

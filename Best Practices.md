@@ -14,7 +14,7 @@ These rules are baked in and covered by tests. Don't fight them.
 | `cache_control` sits on the last STABLE system block, never on the user message | `src/ccc/client.py:_build_system_blocks`, `npm/src/client.ts:buildSystemBlocks` |
 | Prefixes shorter than ~4 096 chars (≈1 024 tokens) get NO `cache_control` | same files; constant `MIN_CACHE_PREFIX_CHARS` |
 | Per-call cache telemetry on stderr after every `ccc ask` | `src/ccc/cli.py`, `npm/src/cli.ts` |
-| `ANTHROPIC_API_KEY` only from environment | `src/ccc/client.py:make_client`, `npm/src/client.ts:makeClient` |
+| API key resolved via the auth cascade (env / .env / config / keyring) | `src/ccc/auth.py`, `npm/src/auth.ts` |
 | `system_input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens` recorded per call | `State.record_usage` / `State.recordUsage` |
 
 If you're modifying the harness itself, see [CLAUDE.md](./CLAUDE.md) for the editing checklist.
@@ -102,7 +102,9 @@ If the handoff was written with a `needs-review` suffix, open it first, fix the 
 
 ## Security
 
-- **API key**: env-only. `.env` is git-ignored; copy `.env.example` to `.env` and fill it in. If you ever commit a key, rotate it at console.anthropic.com — purging history alone is insufficient because GitHub may have already cached the blob.
+- **API key**: read via the auth detector (`src/ccc/auth.py`), which walks `env vars → project .env → ~/.env → platform config file → OS keyring`. First valid hit wins. The detector never mutates `os.environ`, so the key does not leak to subprocesses. Run `ccc auth -v` to see which candidate was picked. `.env` is git-ignored; copy `.env.example` to `.env` and fill it in. The OS keyring is the most secure of the supported sources — Keychain on macOS, Credential Manager on Windows, Secret Service / libsecret on Linux. Install with `pip install -e ".[keyring]"` then `keyring set anthropic api_key`.
+- **Never put a key into a `ccc cache`'d source.** The detector deliberately does not scan cached topic content — anything you `ccc cache` is uploaded to the model. If you keep a key in a config file that ends up under a cached directory, the file goes to the model on the next `ccc ask`.
+- **If a key is ever committed, rotate it at console.anthropic.com** — purging history alone is insufficient because GitHub may have already cached the blob.
 - **Cached content sensitivity**: `.ccc/sources.sqlite` and `.ccc/handoffs/*.md` may contain proprietary code, internal docs, or PII surfaced from your `ccc cache` sources. Treat the `.ccc/` directory as you treat your `.env` — don't sync it to a public bucket, don't commit it, and consider full-disk encryption.
 - **Logs**: nothing in `ccc` logs full prompts or completions at default verbosity. If you wrap `ccc` in your own tooling, preserve that property — never log the response body or the assembled system prompt outside an explicit `--debug` flag gated behind a non-default env var.
 

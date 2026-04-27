@@ -37,6 +37,7 @@ def compact(
     *,
     threshold: int = DEFAULT_THRESHOLD_TOKENS,
     force: bool = False,
+    project_root: Path | str | None = None,
 ) -> tuple[Path, State] | None:
     """Generate a handoff document and reset volatile session counters.
 
@@ -48,7 +49,7 @@ def compact(
     if not force and not should_compact(state, threshold):
         return None
 
-    text, usage = generate_handoff(state)
+    text, usage = generate_handoff(state, project_root=project_root)
     state.record_usage(usage)
     text = truncate_to_limit(text)
     problems = validate(text)
