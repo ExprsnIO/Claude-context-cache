@@ -11,6 +11,7 @@ from ccc.prompts import (
     HANDOFF_SYSTEM_PROMPT,
     render_topic_context,
 )
+from ccc.source_cache import gather_context_sources_cached
 from ccc.state import State
 
 DEFAULT_MODEL = "claude-opus-4-7"
@@ -101,7 +102,7 @@ def ask(
 ) -> tuple[str, Any]:
     """Run a cached call against the topic context. Returns (text, usage)."""
     client = make_client()
-    topic_text = render_topic_context(gather_context_sources(state))
+    topic_text = render_topic_context(gather_context_sources_cached(state))
     system_blocks = _build_system_blocks(ASK_SYSTEM_PROMPT, topic_text)
 
     messages: list[dict[str, Any]] = []
@@ -138,7 +139,7 @@ def generate_handoff(
 ) -> tuple[str, Any]:
     """Ask Claude to compact the session into a ≤750-word handoff document."""
     client = make_client()
-    topic_text = render_topic_context(gather_context_sources(state))
+    topic_text = render_topic_context(gather_context_sources_cached(state))
     system_blocks = _build_system_blocks(HANDOFF_SYSTEM_PROMPT, topic_text)
 
     user_payload = (
