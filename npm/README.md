@@ -81,6 +81,33 @@ state.recordUsage(usage);
 store.save(state);
 ```
 
+### Source caching (context-store)
+
+`ccc ask` and `ccc handoff` cache the *read* contents of every source you
+registered with `ccc cache`, so repeat calls don't re-walk and re-read the
+same files from disk. The cache key is a fingerprint of each source's
+mtime + size — any on-disk change invalidates the entry automatically.
+
+The cache is backed by [`@claude-context-cache/context-store`](../context-store/README.md),
+which auto-selects a backend at session start: **Redis → SQLite in-memory →
+SQLite on-disk**. Configure it with the same env vars (`CCC_REDIS_URL`,
+`CCC_SQLITE_PATH`, `CCC_NAMESPACE`, …) — no extra setup needed.
+
+```ts
+import {
+  Session,
+  gatherContextSourcesCached,
+  readSourceCached,
+} from "claude-context-cache";
+
+// Use the shared session that ask()/generateHandoff() already use:
+const { text, cacheHit } = await readSourceCached("./src");
+
+// Or run an isolated one (e.g. against Redis):
+const session = new Session({ redisUrl: "redis://localhost:6379" });
+await session.set("topic:notes", "...");
+```
+
 ## Why prompt caching
 
 Cached topic context (everything you `ccc cache`'d) is stitched into the system prompt with `cache_control: ephemeral`. The system-prompt prefix is byte-stable across `ccc ask` calls, so the second and later calls read from cache at ~10% the input price.

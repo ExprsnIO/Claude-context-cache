@@ -44,3 +44,20 @@ export {
   DEFAULT_THRESHOLD_TOKENS,
   type CompactResult,
 } from "./compact.js";
+
+export {
+  gatherContextSourcesCached,
+  readSourceCached,
+  getSourceSession,
+  closeSourceSession,
+} from "./source-cache.js";
+
+export {
+  Session,
+  withSession,
+  createStore,
+  type ContextStore,
+  type StoreConfig,
+  type SessionOptions,
+  type BackendKind,
+} from "@claude-context-cache/context-store";

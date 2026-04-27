@@ -48,6 +48,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@claude-context-cache/context-store": "file:../context-store",
     "commander": "^12.1.0"
   },
   "devDependencies": {
