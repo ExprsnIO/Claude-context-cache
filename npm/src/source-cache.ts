@@ -1,8 +1,11 @@
 /**
  * Caches the *read* content of `state.context_sources` between `ccc ask`
  * calls so we don't re-read the same files from disk every time. Cache key
- * is a fingerprint of the source's mtimes + sizes, so any on-disk change
- * invalidates automatically.
+ * is a SHA-256 hash of the file's bytes (or, for a directory, a hash over
+ * the sorted relative-path + per-file content hashes). Hashing content —
+ * not mtime — means rewrites that produce identical bytes don't invalidate,
+ * and edits that don't bump mtime (touch-preserve, restored backups,
+ * sub-second mtime resolution) still do.
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -35,10 +38,14 @@ export async function closeSourceSession(): Promise<void> {
   }
 }
 
+function hashFile(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
 function fingerprint(path: string): string {
   const stat = statSync(path);
   if (!stat.isDirectory()) {
-    return `f:${stat.mtimeMs}:${stat.size}`;
+    return `f:${hashFile(path)}`;
   }
   const parts: string[] = [];
   const walk = (dir: string): void => {
@@ -52,8 +59,7 @@ function fingerprint(path: string): string {
         walk(child);
       } else if (entry.isFile()) {
         try {
-          const s = statSync(child);
-          parts.push(`${relative(path, child)}:${s.mtimeMs}:${s.size}`);
+          parts.push(`${relative(path, child)}:${hashFile(child)}`);
         } catch {
           /* skip */
         }
@@ -61,7 +67,7 @@ function fingerprint(path: string): string {
     }
   };
   walk(path);
-  return `d:${createHash("sha1").update(parts.join("|")).digest("hex")}`;
+  return `d:${createHash("sha256").update(parts.join("|")).digest("hex")}`;
 }
 
 function readSourceText(path: string): string {

@@ -17,6 +17,13 @@ from ccc.state import State
 DEFAULT_MODEL = "claude-opus-4-7"
 DEFAULT_MAX_TOKENS = 16000
 
+# Anthropic only caches prefixes of ≥1024 tokens for most Claude models, and
+# a cache write costs 25% more than a base input token, so caching a small
+# prefix loses money. ~4 chars/token is the standard back-of-envelope, so
+# 4096 chars is a conservative floor that keeps us above the API minimum
+# without an extra tokenizer round-trip.
+MIN_CACHE_PREFIX_CHARS = 4096
+
 
 def _read_source(path: Path) -> str:
     if path.is_dir():
@@ -64,22 +71,20 @@ def _import_anthropic():
 def _build_system_blocks(
     base_prompt: str, topic_text: str
 ) -> list[dict[str, Any]]:
-    """System blocks with cache_control on the last block.
+    """System blocks with cache_control on the last block when worth it.
 
     Render order is `tools` → `system` → `messages`, so a marker on the last
     system block caches the entire prefix (tools + system) up to that point.
+    The marker is only emitted when the combined prefix is large enough to
+    clear the API's minimum-cacheable-tokens floor; otherwise the 25% cache
+    write premium would never amortize.
     """
     blocks: list[dict[str, Any]] = [{"type": "text", "text": base_prompt}]
     if topic_text:
-        blocks.append(
-            {
-                "type": "text",
-                "text": topic_text,
-                "cache_control": {"type": "ephemeral"},
-            }
-        )
-    else:
-        blocks[0]["cache_control"] = {"type": "ephemeral"}
+        blocks.append({"type": "text", "text": topic_text})
+    if len(base_prompt) + len(topic_text) < MIN_CACHE_PREFIX_CHARS:
+        return blocks
+    blocks[-1]["cache_control"] = {"type": "ephemeral"}
     return blocks
 
 

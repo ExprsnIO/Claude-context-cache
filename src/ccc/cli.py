@@ -147,6 +147,26 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _format_usage_line(usage: object) -> str:
+    """One-line per-call cache telemetry written to stderr.
+
+    Surfaces `cache_creation_input_tokens` and `cache_read_input_tokens`
+    for the current call so cache effectiveness regressions are visible
+    instead of buried in aggregate counters.
+    """
+    inp = getattr(usage, "input_tokens", 0) or 0
+    out = getattr(usage, "output_tokens", 0) or 0
+    cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+    cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    cacheable = cache_read + cache_creation
+    hit_pct = (cache_read / cacheable * 100) if cacheable > 0 else 0.0
+    return (
+        f"[ccc] tokens — input={inp} output={out} "
+        f"cache_read={cache_read} cache_creation={cache_creation} "
+        f"hit={hit_pct:.0f}%"
+    )
+
+
 def cmd_ask(args: argparse.Namespace) -> int:
     from ccc.client import ask  # lazy: avoid forcing anthropic import
 
@@ -159,9 +179,10 @@ def cmd_ask(args: argparse.Namespace) -> int:
     state.record_usage(usage)
     store.save(state)
     print(text)
+    print(_format_usage_line(usage), file=sys.stderr)
     if should_compact(state, args.threshold):
         print(
-            f"\n[ccc] session tokens hit {session_token_estimate(state)} "
+            f"[ccc] session tokens hit {session_token_estimate(state)} "
             f"(threshold {args.threshold}); run `ccc compact` to emit a handoff.",
             file=sys.stderr,
         )

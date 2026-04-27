@@ -51,16 +51,13 @@ test("readSourceCached returns cacheHit=false on first call, true on second", as
   });
 });
 
-test("readSourceCached invalidates when file mtime/size changes", async () => {
+test("readSourceCached invalidates when file content changes", async () => {
   await withTmpSession(async (dir) => {
     const path = makeFile(dir, "a.txt", "alpha");
     const first = await readSourceCached(path);
     assert.equal(first.cacheHit, false);
 
     writeFileSync(path, "alpha-and-beta", "utf8");
-    // Bump mtime explicitly in case the test runs faster than mtime resolution.
-    const future = new Date(Date.now() + 5000);
-    utimesSync(path, future, future);
 
     const second = await readSourceCached(path);
     assert.equal(second.cacheHit, false);
@@ -68,6 +65,36 @@ test("readSourceCached invalidates when file mtime/size changes", async () => {
     const third = await readSourceCached(path);
     assert.equal(third.cacheHit, true);
     assert.equal(third.text, "alpha-and-beta");
+  });
+});
+
+test("readSourceCached ignores mtime-only changes", async () => {
+  // Touching mtime without changing bytes must NOT invalidate.
+  await withTmpSession(async (dir) => {
+    const path = makeFile(dir, "a.txt", "alpha");
+    const first = await readSourceCached(path);
+    assert.equal(first.cacheHit, false);
+
+    const future = new Date(Date.now() + 5000);
+    utimesSync(path, future, future);
+
+    const second = await readSourceCached(path);
+    assert.equal(second.cacheHit, true);
+    assert.equal(second.text, "alpha");
+  });
+});
+
+test("readSourceCached ignores rewrite with identical bytes", async () => {
+  await withTmpSession(async (dir) => {
+    const path = makeFile(dir, "a.txt", "alpha");
+    const first = await readSourceCached(path);
+    assert.equal(first.cacheHit, false);
+
+    writeFileSync(path, "alpha", "utf8");
+
+    const second = await readSourceCached(path);
+    assert.equal(second.cacheHit, true);
+    assert.equal(second.text, "alpha");
   });
 });
 

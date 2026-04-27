@@ -8,8 +8,10 @@ The goal is to minimize tokens spent re-establishing context: cache the topic on
 
 ```bash
 pip install -e .
-export ANTHROPIC_API_KEY=...
+export ANTHROPIC_API_KEY=...   # or copy .env.example to .env
 ```
+
+> Never commit your API key. `.env` is git-ignored; a `.env.example` template ships at the repo root.
 
 ## Quick start
 
@@ -53,6 +55,13 @@ The harness validates the document, truncates if Claude overshoots, and flags an
 The cached topic context (everything you `ccc cache`'d) is stitched into the system prompt with `cache_control: ephemeral`. The prompt prefix — system prompt + topic context — is byte-stable across `ccc ask` calls, so the second and later calls read from cache at ~10% the input price.
 
 The only volatile part is the user message, which sits after the cache breakpoint. Adding more cached sources or changing the original prompt will invalidate the cache once; subsequent calls warm it again.
+
+### Caching policy
+
+- **Cache-key inputs.** The on-disk source cache is keyed by a SHA-256 hash of file bytes (or, for a directory, a hash over the sorted relative-path + per-file content hashes). Touching `mtime` without changing bytes does **not** invalidate; rewriting with identical bytes does **not** invalidate; any byte-level change does.
+- **Minimum cacheable prefix.** `cache_control` is only emitted when the system prompt + topic context together exceed ~4 096 characters (a conservative proxy for Anthropic's 1 024-token floor). Below that, the 25 % cache-write premium would never amortize, so the marker is dropped.
+- **Marker placement.** The marker sits on the **last** stable system block — after `tools` and `system`, before any `messages`. Volatile content (the user's new message, the per-call `Original task: …` framing) lives in `messages` so the cached prefix stays byte-stable.
+- **Per-call telemetry.** After every `ccc ask`, a one-line summary on stderr reports `input`, `output`, `cache_read`, `cache_creation`, and the resulting hit-rate so cache regressions are visible immediately. Aggregate counters live in `ccc status`.
 
 ## Layout
 

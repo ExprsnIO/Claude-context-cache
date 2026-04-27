@@ -16,6 +16,13 @@ import type { State, AnthropicUsage } from "./state.js";
 export const DEFAULT_MODEL = "claude-opus-4-7";
 export const DEFAULT_MAX_TOKENS = 16000;
 
+// Anthropic only caches prefixes of ≥1024 tokens for most Claude models, and
+// a cache write costs 25% more than a base input token, so caching a small
+// prefix loses money. ~4 chars/token is the standard back-of-envelope, so
+// 4096 chars is a conservative floor that keeps us above the API minimum
+// without an extra tokenizer round-trip.
+export const MIN_CACHE_PREFIX_CHARS = 4096;
+
 function readSourceText(path: string): string {
   const stat = statSync(path);
   if (!stat.isDirectory()) {
@@ -65,23 +72,24 @@ function makeClient(): Anthropic {
   return new Anthropic({ apiKey });
 }
 
-interface SystemBlock {
+export interface SystemBlock {
   type: "text";
   text: string;
   cache_control?: { type: "ephemeral" };
 }
 
-function buildSystemBlocks(basePrompt: string, topicText: string): SystemBlock[] {
+export function buildSystemBlocks(
+  basePrompt: string,
+  topicText: string,
+): SystemBlock[] {
   const blocks: SystemBlock[] = [{ type: "text", text: basePrompt }];
-  if (topicText) {
-    blocks.push({
-      type: "text",
-      text: topicText,
-      cache_control: { type: "ephemeral" },
-    });
-  } else {
-    blocks[0]!.cache_control = { type: "ephemeral" };
+  if (topicText) blocks.push({ type: "text", text: topicText });
+  if (basePrompt.length + topicText.length < MIN_CACHE_PREFIX_CHARS) {
+    // Prefix is too small to clear Anthropic's minimum-cacheable-tokens floor.
+    // The 25% cache-write premium would never amortize, so skip the marker.
+    return blocks;
   }
+  blocks[blocks.length - 1]!.cache_control = { type: "ephemeral" };
   return blocks;
 }
 
