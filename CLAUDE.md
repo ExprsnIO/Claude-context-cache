@@ -49,7 +49,7 @@ These rules exist because violating them silently destroys cache hit rate, costs
 3. **Prefixes shorter than `MIN_CACHE_PREFIX_CHARS` get NO `cache_control`.** The cache-write premium is 25%; below the API's minimum-cacheable-prefix floor, it never amortizes.
 4. **Volatile content goes in `messages`, never in `system` or `tools`.** No timestamps, no request ids, no per-user data above the breakpoint.
 5. **`ANTHROPIC_API_KEY` only from environment.** Never read from a config file, never log, never embed. `.env` is git-ignored; ship `.env.example` instead. If a key is committed, rotate it at console.anthropic.com — purging history is insufficient.
-6. **Python and npm packages stay behaviorally identical.** A change to source-cache fingerprinting, system-block layout, or prompt text in one MUST land in the other in the same commit.
+6. **Python and npm packages stay behaviorally identical.** A change to source-cache fingerprinting, system-block layout, or prompt text in one MUST land in the other in the same commit. Optional UX layers (e.g. the Textual TUI at `src/ccc/tui.py`) are exempt from this rule — they are Python-only by design and the npm package has no equivalent.
 
 ## Coding style
 
@@ -83,6 +83,7 @@ src/ccc/                    # Python package
   state.py                  # State dataclass + StateStore (.ccc/state.json)
   compact.py                # threshold check + reset-after-handoff
   handoff.py                # validate/truncate/write handoff documents
+  tui.py                    # OPTIONAL Textual TUI (pip install -e ".[tui]")
   store/                    # tiered KV adapter (sqlite/redis/postgres/...)
 
 npm/src/                    # parallel TypeScript package — keep in sync
