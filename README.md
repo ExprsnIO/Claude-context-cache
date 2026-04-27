@@ -115,6 +115,7 @@ The build order is enforced by listing `context-store` first in the root `worksp
 | `ccc handoff` | generate a ≤750-word handoff document on demand |
 | `ccc compact` | auto-compact when token usage hits the threshold |
 | `ccc resume <handoff>` | load a handoff doc as the seed of a new state |
+| `ccc tui` | launch the interactive Textual UI (requires `pip install -e ".[tui]"`) |
 
 ## Defaults
 

@@ -13,6 +13,7 @@ For an overview, see [README.md](./README.md). For best practices and design rat
 - [Workflow patterns](#workflow-patterns)
 - [Prompt caching internals](#prompt-caching-internals)
 - [The Claude Code subagent](#the-claude-code-subagent)
+- [The TUI (`ccc tui`)](#the-tui-ccc-tui)
 - [Node library API](#node-library-api)
 - [Configuration & defaults](#configuration--defaults)
 - [Troubleshooting](#troubleshooting)
@@ -286,6 +287,41 @@ The subagent engages proactively when:
 3. The session has accumulated >100K tokens of conversation with substantial work done.
 4. The user asks to "save progress", "hand off", "compact", "resume", or "checkpoint".
 5. A `.ccc/` directory already exists in the working tree.
+
+## The TUI (`ccc tui`)
+
+An optional Textual-based terminal UI. Install with:
+
+```bash
+pip install -e ".[tui]"   # adds textual
+ccc tui
+```
+
+The screen is a five-tab dashboard over the same `.ccc/state.json` the CLI reads, so anything you do in the TUI is immediately visible to `ccc status` (and vice versa). Tabs:
+
+| Tab | What it does |
+|---|---|
+| `Status` | Read-only snapshot: workspace path, phase, sprint, original prompt, code style, session token totals, last handoff. Press `r` to reload from disk. |
+| `Todos` | Add a todo with the input + `Add`; complete the highlighted row with `Complete selected`. Persists immediately. |
+| `Sources` | Register a `ccc cache` source by typing a path + optional label and pressing `Cache`. The path is resolved and the byte size recorded the same way the CLI does it. |
+| `Ask` | Multi-line prompt area, `Submit` calls Claude on a worker thread. Response renders below; the per-call telemetry line (`input`, `output`, `cache_read`, `cache_creation`, `hit%`) appears underneath. |
+| `Handoffs` | Lists all `.ccc/handoffs/*.md`, with word counts and the `needs-review` flag. Buttons trigger `Generate handoff`, `Compact (auto)`, or `Compact --force`. |
+
+Keybindings:
+
+| Key | Action |
+|---|---|
+| `q` | quit |
+| `r` | reload state from disk (use after editing via the CLI in another terminal) |
+| `1`–`5` | jump to Status / Todos / Sources / Ask / Handoffs |
+| `c` | run `compact` (auto, respects threshold) |
+| `h` | generate a handoff |
+
+### Limitations
+
+- The TUI is **Python-only**. The npm package does not ship a parallel TUI — Textual has no equivalent in the Node ecosystem at the same level of maintainability, and a TUI is an optional UX layer rather than a behavioral feature, so it sits outside the parity rule (see [CLAUDE.md](./CLAUDE.md)).
+- `ccc init` is **not** exposed in the TUI. Run it from the shell first; the TUI surfaces a notification if the workspace is missing rather than auto-initializing somewhere the user didn't intend.
+- Anthropic calls block the worker thread; the UI stays interactive but a single `Ask` is not cancellable mid-flight. Use `q` to abort the whole session if needed.
 
 ## Node library API
 

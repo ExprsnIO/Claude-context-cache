@@ -227,6 +227,12 @@ def cmd_compact(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_tui(args: argparse.Namespace) -> int:
+    from ccc import tui  # lazy: textual is an optional dependency
+
+    return tui.run(root=args.root)
+
+
 def cmd_resume(args: argparse.Namespace) -> int:
     store = _store(args)
     handoff_path = Path(args.handoff)
@@ -356,6 +362,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Replace any existing state with the handoff contents.",
     )
     p.set_defaults(func=cmd_resume)
+
+    p = sub.add_parser(
+        "tui",
+        help="Launch the interactive Textual UI (requires `pip install -e \".[tui]\"`).",
+    )
+    p.set_defaults(func=cmd_tui)
 
     return parser
 
