@@ -2,7 +2,7 @@
 
 Detailed reference for the `ccc` CLI, the Claude Code subagent, and the Node library.
 
-For an overview, see [README.md](./README.md). For the license, see [License.md](./License.md).
+For an overview, see [README.md](./README.md). For best practices and design rationale, see [Best Practices.md](./Best%20Practices.md). For a worked example, see [Example.md](./Example.md). For the license, see [License.md](./License.md).
 
 ## Contents
 
@@ -23,9 +23,10 @@ For an overview, see [README.md](./README.md). For the license, see [License.md]
 
 ```bash
 pip install -e .
+cp .env.example .env       # then fill in ANTHROPIC_API_KEY
 ```
 
-This installs the `ccc` console script defined in `pyproject.toml` (`ccc = "ccc.cli:main"`). Requires Python ≥ 3.10 and the `anthropic` SDK ≥ 0.39.0.
+This installs the `ccc` console script defined in `pyproject.toml` (`ccc = "ccc.cli:main"`). Requires Python ≥ 3.10 and the `anthropic` SDK ≥ 0.39.0. `.env` is git-ignored — never commit your key.
 
 ### Node / npm
 
@@ -140,6 +141,14 @@ ccc ask "Sketch the LoginView class. Use the cached source for naming convention
 
 If stdin is piped and `<text>` is omitted, the prompt is read from stdin.
 
+After every call, a one-line telemetry summary is written to **stderr**:
+
+```
+[ccc] tokens — input=152 output=803 cache_read=12048 cache_creation=0 hit=100%
+```
+
+`hit%` = `cache_read / (cache_read + cache_creation)`. A first call typically reports `cache_creation > 0, cache_read = 0, hit = 0%`; subsequent calls within the cache TTL should report `cache_read > 0` and a high `hit%`. A persistent `hit = 0%` after the first call is a regression — most often caused by something volatile (date, request id) drifting into the cached prefix.
+
 ### `ccc handoff`
 
 Generate a ≤750-word handoff document on demand. The CLI validates the output (word count + required sections); if either check fails, the file is written with a `needs-review` suffix and warnings are printed to stderr (exit code `2`).
@@ -216,13 +225,31 @@ ccc status
 
 ## Prompt caching internals
 
-The cached topic context is stitched into the system prompt with `cache_control: ephemeral`. The system prompt + topic context prefix is byte-stable across `ccc ask` calls, so:
+The cached topic context is stitched into the system prompt with `cache_control: ephemeral` on the **last stable** system block — between `tools`/`system` and the `messages` array. The full prefix (`tools → system → cache_control marker`) is byte-stable across `ccc ask` calls, so:
 
-- The first call writes the cache and pays full input price for the prefix.
+- The first call writes the cache and pays full input price for the prefix (plus a 25% cache-write premium on the cached portion).
 - Subsequent calls read from the cache at ~10% of the input price.
-- The user message sits **after** the cache breakpoint and is the only volatile part.
+- The user message sits **after** the cache breakpoint and is the only volatile part of the request.
 
 Adding a `ccc cache` source or changing the original prompt invalidates the cache once; the next call warms it again.
+
+### When `cache_control` is actually emitted
+
+`cache_control` is only added when the system prompt + topic context together exceed **~4 096 characters** (a conservative proxy for Anthropic's 1 024-token minimum cacheable prefix). Below that threshold, the 25% cache-write premium would never amortize, so the marker is dropped and the call runs uncached. This means a `ccc init` that hasn't `ccc cache`'d much yet may not exercise prompt caching at all — that's intentional.
+
+### Source-cache invalidation
+
+The on-disk source cache (separate from Anthropic's prompt cache) is keyed by a SHA-256 hash of file bytes. For a directory, the key is a hash over sorted `relpath:hash` pairs. Concretely:
+
+| Change to a registered source | Cache hit on next `ccc ask`? |
+|---|---|
+| `touch <file>` (mtime only, bytes unchanged) | yes — no invalidation |
+| Rewrite the file with identical bytes | yes — no invalidation |
+| Change a single byte | no — cache is rebuilt |
+| Add or remove a file in a registered directory | no — directory hash changes |
+| Move the file to a new path | no — cache key includes the path |
+
+The dual cache layer (on-disk source cache + Anthropic prompt cache) means the same `ccc cache` source rendered from disk produces the same prefix bytes, which produces the same Anthropic cache hit.
 
 ## Handoff document contract
 
@@ -303,3 +330,7 @@ store.save(state);
 **`ccc compact` is a no-op.** Session token usage is below the threshold. Pass `--force` to compact anyway, or wait until more `ccc ask` traffic accumulates.
 
 **npm `postinstall` did nothing.** It auto-skips on global installs, in CI, or when `CCC_NO_AUTOENGAGE=1` is set. Drop `.claude/agents/context-cache.md` in by hand, or rerun `npm install` in a non-CI shell without the env var.
+
+**`hit=0%` on every `ccc ask` after the first.** The cached prefix is drifting between calls. Common causes: a `ccc cache`'d source is being rewritten with new bytes between calls (re-hash invalidates), the underlying model id has changed (different cache namespace), or a file in a registered directory has been added/removed. Confirm by running `ccc ask` twice in a row with no edits in between — if the second call still shows `hit=0%`, the prefix is too small (under ~4096 chars) and `cache_control` was deliberately not emitted.
+
+**`hit=0%` and `cache_creation=0` on every call.** The combined system prompt + topic context is below the minimum-cacheable-prefix floor (~4096 chars). `cache_control` was not emitted, so neither cache-create nor cache-read can be reported. Cache more sources, or accept that small contexts don't benefit from prompt caching.

@@ -2,6 +2,8 @@
 
 A small CLI tool that caches Claude topic contexts (via the Anthropic prompt-caching API), tracks to-dos / sprints / phases for the active session, and emits **≤750-word handoff documents** so the next context window can pick up where the last one stopped.
 
+Docs: [Usage.md](./Usage.md) · [Best Practices.md](./Best%20Practices.md) · [Example.md](./Example.md) · [CLAUDE.md](./CLAUDE.md) · [License.md](./License.md)
+
 The goal is to minimize tokens spent re-establishing context: cache the topic once, accumulate progress notes locally, and compact into a tiny handoff at the end.
 
 ## Install
