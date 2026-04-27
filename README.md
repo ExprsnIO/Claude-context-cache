@@ -84,3 +84,16 @@ The only volatile part is the user message, which sits after the cache breakpoin
 - Model: `claude-opus-4-7` (override per call with `--model`)
 - Compaction threshold: 150,000 session tokens (override with `--threshold`)
 - Handoff word limit: 750
+
+## Claude Code subagent
+
+A project-level subagent ships at [`.claude/agents/context-cache.md`](.claude/agents/context-cache.md). When you run Claude Code in this repo (or copy that file into another repo's `.claude/agents/`, or your global `~/.claude/agents/`), Claude will spawn the **`context-cache`** agent for long-running tasks and drive `ccc` on your behalf — initializing the workspace, tracking todos/sprints/phases, calling `ccc ask` against the cached context, and generating handoffs when the context window fills.
+
+To install globally:
+
+```bash
+mkdir -p ~/.claude/agents
+cp .claude/agents/context-cache.md ~/.claude/agents/
+```
+
+Invoke explicitly with `/agents` in Claude Code, or just describe a multi-session task and Claude will route to it automatically.
