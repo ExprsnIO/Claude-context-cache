@@ -12,3 +12,9 @@ venv/
 .ruff_cache/
 .ccc/
 !.ccc/.gitkeep
+
+# Node
+node_modules/
+dist-test/
+*.tgz
+package-lock.json

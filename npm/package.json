@@ -1,0 +1,57 @@
+{
+  "name": "claude-context-cache",
+  "version": "0.1.0",
+  "description": "Cache Claude topic contexts, auto-compact, and emit ≤750-word handoff documents for the next context window. Auto-engages the Claude Code subagent on install.",
+  "type": "module",
+  "bin": {
+    "ccc": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "assets/",
+    "scripts/postinstall.cjs",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "tsc",
+    "test": "tsc -p tsconfig.test.json && node --test --test-reporter=spec dist-test/tests/*.test.js",
+    "postinstall": "node scripts/postinstall.cjs",
+    "clean": "rm -rf dist dist-test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "claude",
+    "anthropic",
+    "context",
+    "cache",
+    "handoff",
+    "claude-code",
+    "agent",
+    "llm"
+  ],
+  "author": "Claude Context Cache",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/exprsnio/claude-context-cache.git"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  }
+}
