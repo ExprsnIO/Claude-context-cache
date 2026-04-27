@@ -10,10 +10,14 @@ The goal is to minimize tokens spent re-establishing context: cache the topic on
 
 ```bash
 pip install -e .
-export ANTHROPIC_API_KEY=...   # or copy .env.example to .env
+# Then provide your Anthropic key by ANY of:
+#   export ANTHROPIC_API_KEY=...                     (shell env)
+#   cp .env.example .env && $EDITOR .env             (project .env)
+#   pip install -e ".[keyring]" && keyring set anthropic api_key   (OS keyring)
+ccc auth -v                # show which candidate the detector picked
 ```
 
-> Never commit your API key. `.env` is git-ignored; a `.env.example` template ships at the repo root.
+> Never commit your API key. `.env` is git-ignored; a `.env.example` template ships at the repo root. See [Usage.md § Environment](./Usage.md#environment) for the full cascade and platform-specific config paths.
 
 ## Quick start
 
@@ -116,6 +120,7 @@ The build order is enforced by listing `context-store` first in the root `worksp
 | `ccc compact` | auto-compact when token usage hits the threshold |
 | `ccc resume <handoff>` | load a handoff doc as the seed of a new state |
 | `ccc tui` | launch the interactive Textual UI (requires `pip install -e ".[tui]"`) |
+| `ccc auth [-v]` | show the detected Anthropic API key source (key value redacted) |
 
 ## Defaults
 

@@ -294,7 +294,9 @@ def build_app(root: str | Path = ".") -> Any:
             from ccc.client import ask
 
             try:
-                text, usage = await asyncio.to_thread(ask, self._state, prompt)
+                text, usage = await asyncio.to_thread(
+                    ask, self._state, prompt, project_root=self._store.root
+                )
             except Exception as exc:  # noqa: BLE001 - surface any backend error
                 self.query_one("#ask-output", Static).update(
                     f"[red]error:[/] {exc}"
@@ -318,7 +320,7 @@ def build_app(root: str | Path = ".") -> Any:
 
             try:
                 raw, usage = await asyncio.to_thread(
-                    generate_handoff, self._state
+                    generate_handoff, self._state, project_root=self._store.root
                 )
             except Exception as exc:  # noqa: BLE001
                 self.notify(f"handoff failed: {exc}", severity="error")
@@ -354,6 +356,7 @@ def build_app(root: str | Path = ".") -> Any:
                     self._state,
                     threshold=int(self.threshold),
                     force=force,
+                    project_root=self._store.root,
                 )
             except Exception as exc:  # noqa: BLE001
                 self.notify(f"compact failed: {exc}", severity="error")

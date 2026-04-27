@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
+from ccc.auth import detect_api_key
 from ccc.prompts import (
     ASK_SYSTEM_PROMPT,
     HANDOFF_SYSTEM_PROMPT,
@@ -88,14 +88,17 @@ def _build_system_blocks(
     return blocks
 
 
-def make_client():
+def make_client(*, project_root: Path | str | None = None):
     anthropic = _import_anthropic()
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
+    hit = detect_api_key(project_root=project_root)
+    if hit is None:
         raise SystemExit(
-            "ANTHROPIC_API_KEY is not set. Export it before running `ccc ask` or `ccc handoff`."
+            "No Anthropic API key found. The detector searched env vars "
+            "($ANTHROPIC_API_KEY, $CLAUDE_API_KEY), .env files, "
+            "platform-specific config paths, and the OS keyring. "
+            "Run `ccc auth` for a candidate-by-candidate report."
         )
-    return anthropic.Anthropic(api_key=api_key)
+    return anthropic.Anthropic(api_key=hit.key)
 
 
 def ask(
@@ -104,9 +107,10 @@ def ask(
     *,
     model: str = DEFAULT_MODEL,
     max_tokens: int = DEFAULT_MAX_TOKENS,
+    project_root: Path | str | None = None,
 ) -> tuple[str, Any]:
     """Run a cached call against the topic context. Returns (text, usage)."""
-    client = make_client()
+    client = make_client(project_root=project_root)
     topic_text = render_topic_context(gather_context_sources_cached(state))
     system_blocks = _build_system_blocks(ASK_SYSTEM_PROMPT, topic_text)
 
@@ -141,9 +145,10 @@ def generate_handoff(
     *,
     model: str = DEFAULT_MODEL,
     max_tokens: int = 4000,
+    project_root: Path | str | None = None,
 ) -> tuple[str, Any]:
     """Ask Claude to compact the session into a ≤750-word handoff document."""
-    client = make_client()
+    client = make_client(project_root=project_root)
     topic_text = render_topic_context(gather_context_sources_cached(state))
     system_blocks = _build_system_blocks(HANDOFF_SYSTEM_PROMPT, topic_text)
 

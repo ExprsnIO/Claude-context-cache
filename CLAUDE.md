@@ -48,7 +48,7 @@ These rules exist because violating them silently destroys cache hit rate, costs
 2. **`cache_control` sits on the last STABLE block, never on the user message.** Anthropic walks the prefix top-down; a marker below volatile content produces zero hits. The placement is locked in `tests/test_client_blocks.py` and `npm/tests/client-blocks.test.ts`.
 3. **Prefixes shorter than `MIN_CACHE_PREFIX_CHARS` get NO `cache_control`.** The cache-write premium is 25%; below the API's minimum-cacheable-prefix floor, it never amortizes.
 4. **Volatile content goes in `messages`, never in `system` or `tools`.** No timestamps, no request ids, no per-user data above the breakpoint.
-5. **`ANTHROPIC_API_KEY` only from environment.** Never read from a config file, never log, never embed. `.env` is git-ignored; ship `.env.example` instead. If a key is committed, rotate it at console.anthropic.com — purging history is insufficient.
+5. **API key is sourced via `ccc.auth.detect_api_key`, never from a hard-coded path or a cached topic source.** The detector cascade is `env vars → project .env → ~/.env → platform config file → OS keyring`. New auth sources are added to that detector, never inlined elsewhere; the cached topic context is NEVER scanned for keys (a key in a `ccc cache`'d source would be uploaded to the model). Detected values are never written into `os.environ` — they leak into subprocesses if you do. `.env` is git-ignored; ship `.env.example` instead. If a key is committed, rotate it at console.anthropic.com — purging history is insufficient.
 6. **Python and npm packages stay behaviorally identical.** A change to source-cache fingerprinting, system-block layout, or prompt text in one MUST land in the other in the same commit. Optional UX layers (e.g. the Textual TUI at `src/ccc/tui.py`) are exempt from this rule — they are Python-only by design and the npm package has no equivalent.
 
 ## Coding style
@@ -77,6 +77,7 @@ If a session in this repo is going to span more than one context window — larg
 ```
 src/ccc/                    # Python package
   cli.py                    # argparse entry; ccc <subcommand>
+  auth.py                   # API key detection cascade (env/.env/config/keyring)
   client.py                 # Anthropic SDK wrapper; cache_control placement
   source_cache.py           # SHA-256-keyed local source cache
   prompts.py                # ASK / HANDOFF system prompts (frozen)
