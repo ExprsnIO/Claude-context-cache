@@ -26,19 +26,22 @@ npm test
 npm run build
 ```
 
-A passing baseline before any change: 37 Python tests, 28 npm tests (including 10 in the `context-store` workspace).
+A passing baseline before any change: 54 Python tests, 50 npm tests (40 in the npm package, 10 in the `context-store` workspace).
 
 ## Architecture in one minute
 
 Request path for `ccc ask`:
 
 1. `cli.py` / `cli.ts` parses args, loads `State` from `.ccc/state.json`.
-2. `client.py` / `client.ts` calls `gather_context_sources_cached(state)` — `source_cache` reads each registered source through a SHA-256-keyed local cache.
-3. `_build_system_blocks(base_prompt, topic_text)` returns `[system, topic]` blocks; if the combined length ≥ `MIN_CACHE_PREFIX_CHARS` (4 096), the **last** block carries `cache_control: ephemeral`.
-4. `client.messages.create(...)` runs; `usage` is recorded into `State` and the per-call telemetry line is written to **stderr**.
-5. `compact.should_compact(state)` checks whether session tokens crossed the threshold and prints a reminder.
+2. `client.make_client()` calls `auth.detect_api_key(project_root=…)` and walks the cascade: `env vars → project .env → ~/.env → platform config file → OS keyring (Python only)`. The first valid hit wins; values are never written into `os.environ`.
+3. `client.py` / `client.ts` calls `gather_context_sources_cached(state)` — `source_cache` reads each registered source through a SHA-256-keyed local cache.
+4. `_build_system_blocks(base_prompt, topic_text)` returns `[system, topic]` blocks; if the combined length ≥ `MIN_CACHE_PREFIX_CHARS` (4 096), the **last** block carries `cache_control: ephemeral`. Below that floor the marker is dropped, since the 25 % cache-write premium would never amortize.
+5. `client.messages.create(...)` runs; `usage` is recorded into `State` and the per-call telemetry line (`input` / `output` / `cache_read` / `cache_creation` / `hit%`) is written to **stderr**.
+6. `compact.should_compact(state)` checks whether session tokens crossed the threshold and prints a reminder.
 
-`ccc handoff` / `ccc compact` reuse steps 2 and 3 with `HANDOFF_SYSTEM_PROMPT`, then validate / truncate the response and write it under `.ccc/handoffs/`.
+`ccc handoff` / `ccc compact` reuse steps 2 – 4 with `HANDOFF_SYSTEM_PROMPT`, then validate / truncate the response and write it under `.ccc/handoffs/`.
+
+Other entry points: `ccc auth [-v]` invokes `auth.detect_api_key` + `auth.search_summary` directly (no Anthropic call); `ccc tui` launches the Textual app at `src/ccc/tui.py`, which reuses every primitive above on a worker thread so the UI stays responsive.
 
 ## Non-negotiable rules
 
@@ -60,13 +63,28 @@ These rules exist because violating them silently destroys cache hit rate, costs
 
 ## Editing checklist
 
-When you change anything in the request path (cli, client, source-cache, prompts, compact), verify:
+When you change anything in the request path (cli, client, source-cache, prompts, compact, auth), verify:
 
-- [ ] Both Python and npm packages updated
+- [ ] Both Python and npm packages updated (parity exception: optional UX layers like `src/ccc/tui.py` are Python-only).
 - [ ] `python -m pytest tests/ -q` passes
 - [ ] `npm test` passes
 - [ ] `npm run build` is clean (no TypeScript errors)
-- [ ] If you touched cache key derivation, system-block layout, or telemetry, the corresponding test in `test_client_blocks.py` / `client-blocks.test.ts` / `test_source_cache.py` / `source-cache.test.ts` covers the new behavior
+- [ ] If you touched cache key derivation, system-block layout, or telemetry, the matching test (`test_client_blocks.py` / `client-blocks.test.ts` / `test_source_cache.py` / `source-cache.test.ts`) covers the new behavior.
+- [ ] If you touched the auth cascade, `tests/test_auth.py` and `npm/tests/auth.test.ts` cover the new source. Never bypass the detector by reading env vars or files directly from `client.py` / `client.ts` — every new source goes through `auth.detect_api_key`.
+- [ ] If you added a new dependency, place it in the right `[…]` optional group in `pyproject.toml` (see "Optional dependencies" below). The core install must stay at one runtime dep (`anthropic`) for Python and one for npm (`@anthropic-ai/sdk`).
+
+## Optional dependencies
+
+The core install is intentionally lean. Anything beyond the Anthropic SDK lives behind an opt-in extra:
+
+| Group | Adds | Used by |
+|---|---|---|
+| `[tui]` | `textual>=0.79` | `ccc tui` (Python only) |
+| `[keyring]` | `keyring>=24` | The OS-keyring step in the auth cascade (Python only) |
+| `[redis]`, `[mysql]`, `[postgres]`, `[mongodb]`, `[all-stores]` | the matching driver | Tiered store backends in `src/ccc/store/` |
+| `[dev]` | `pytest>=7.0` | Test suite |
+
+If a feature genuinely needs a new runtime dependency, prefer adding a new `[…]` group over expanding the core. Lazy-import the dep inside the consuming module so the rest of the CLI keeps working when the extra isn't installed (see `tui.py`'s `_require_textual()` and `auth.py`'s `_keyring_get()` for the pattern).
 
 ## When to drive `ccc` yourself
 
